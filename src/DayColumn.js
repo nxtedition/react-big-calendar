@@ -13,8 +13,6 @@ import { accessor as get } from './utils/accessors';
 
 import TimeColumn from './TimeColumn'
 
-import moment from 'moment'
-
 function snapToSlot(date, step){
   var roundTo = 1000 * 60 * step;
   return new Date(Math.floor(date.getTime() / roundTo) * roundTo)
@@ -54,11 +52,10 @@ function overlaps(event, events, { startAccessor, endAccessor }, last) {
 }
 
 const sort = (function() {
-  let _sortedEvents
+  let _sortedEvents = []
 
   return function (events, startAccessor, endAccessor) {
-    if (!_sortedEvents) {
-      console.log('sort')
+    if (_sortedEvents !== events.length) {
       _sortedEvents = events.sort((a, b) => {
         let startA = +get(a, startAccessor)
         let startB = +get(b, startAccessor)
@@ -74,8 +71,6 @@ const sort = (function() {
     return _sortedEvents
   }
 })()
-
-let _styleMap = []
 
 let DaySlot = React.createClass({
 
@@ -204,8 +199,6 @@ let DaySlot = React.createClass({
     return this.getSortedEvents().map((event, idx) => {
       let start = get(event, startAccessor)
       let end = get(event, endAccessor)
-      let startSlot = positionFromDate(start, min, this._totalMin);
-      let endSlot = positionFromDate(end, min, this._totalMin);
 
       let continuesPrior = startsBefore(start, min)
       let continuesAfter = startsAfter(end, max)
@@ -245,42 +238,74 @@ let DaySlot = React.createClass({
     })
   },
 
-  _eventStyle(event, idx) {
-    let { min, startAccessor, endAccessor } = this.props
+  _eventStyle: (function() {
+    let styleMap = []
 
-    let events = this.getSortedEvents()
-    let start = get(event, startAccessor)
-    let end = get(event, endAccessor)
+    return function (event, idx) {
+      let { min, startAccessor, endAccessor } = this.props
 
-    let startSlot = positionFromDate(start, min, this._totalMin)
-    let endSlot = positionFromDate(end, min, this._totalMin)
-    endSlot = Math.max(endSlot, startSlot + this.props.step) //must be at least one `step` high
+      let getSlot = (event, accessor) => positionFromDate(
+        get(event, accessor), min, this._totalMin
+      )
 
-    if (!_styleMap[idx]) {
-      let i = idx
-      let rowCount = 0
+      let events = this.getSortedEvents()
+      let startSlot = getSlot(event, startAccessor)
+      let endSlot = Math.max(
+        getSlot(event, endAccessor), startSlot + this.props.step
+      ) // must be at least one `step` high
 
-      while (
-        i < events.length &&
-        endSlot > positionFromDate(get(events[i++], startAccessor), min, this._totalMin)
-      ) {
-        rowCount++
-      }
+      if (!styleMap[idx]) {
+        let rowCount = 1
+        let nextIdx = idx + 1
+        let nextEvent
+        let isContainer = true
 
-      for (let n = 0; n < rowCount; n++) {
-        let widthPercentage = 100 / rowCount
-        _styleMap[idx + n] = {
-          left: `${(n) * widthPercentage}%`,
-          width: `${widthPercentage}%`
+        while (nextEvent = events[nextIdx++]) {
+          let nextStartSlot = getSlot(nextEvent, startAccessor)
+
+          // This event has no more events inside it
+          if (endSlot < nextStartSlot) {
+            break
+          }
+
+          let nextEndSlot = getSlot(nextEvent, endAccessor)
+
+          // This event is not fully containing all events inside it
+          if (nextStartSlot === startSlot || nextEndSlot > endSlot) {
+            isContainer = false
+          }
+
+          rowCount++
+        }
+
+        for (let n = 0; n < rowCount; n++) {
+          if (isContainer && n === 0) {
+            styleMap[idx] = {
+              left: 0,
+              width: '100%',
+              zIndex: 0
+            }
+          } else {
+            let adjustedRowCount = rowCount - (isContainer ? 1 : 0)
+            let adjustedLeftOffset = isContainer ? n - 1 : n
+            let width = 100 / adjustedRowCount
+
+            styleMap[idx + n] = {
+              left: `${(adjustedLeftOffset) * width}%`,
+              width: `${width}%`,
+              zIndex: 1
+            }
+          }
+
         }
       }
+
+      return {
+        ...styleMap[idx],
+        ...this._slotStyle(startSlot, endSlot)
+      }
     }
-
-    let { left = 0, width = '100%' } = _styleMap[idx] || {}
-    let { top, height } = this._slotStyle(startSlot, endSlot)
-
-    return { left, width, top, height }
-  },
+  })(),
 
   _slotStyle(startSlot, endSlot) {
     let top = ((startSlot / this._totalMin) * 100);
