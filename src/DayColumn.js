@@ -13,6 +13,8 @@ import { accessor as get } from './utils/accessors';
 
 import TimeColumn from './TimeColumn'
 
+import moment from 'moment'
+
 function snapToSlot(date, step){
   var roundTo = 1000 * 60 * step;
   return new Date(Math.floor(date.getTime() / roundTo) * roundTo)
@@ -50,6 +52,30 @@ function overlaps(event, events, { startAccessor, endAccessor }, last) {
 
   return offset
 }
+
+const sort = (function() {
+  let _sortedEvents
+
+  return function (events, startAccessor, endAccessor) {
+    if (!_sortedEvents) {
+      console.log('sort')
+      _sortedEvents = events.sort((a, b) => {
+        let startA = +get(a, startAccessor)
+        let startB = +get(b, startAccessor)
+
+        if (startA === startB) {
+          return +get(b, endAccessor) - +get(a, endAccessor)
+        }
+
+        return startA - startB
+      })
+    }
+
+    return _sortedEvents
+  }
+})()
+
+let _styleMap = []
 
 let DaySlot = React.createClass({
 
@@ -110,6 +136,11 @@ let DaySlot = React.createClass({
       this._teardownSelectable();
   },
 
+  getSortedEvents() {
+    let { events, startAccessor, endAccessor } = this.props
+    return sort(events, startAccessor, endAccessor)
+  },
+
   render() {
     const {
       min,
@@ -124,7 +155,7 @@ let DaySlot = React.createClass({
     this._totalMin = dates.diff(min, max, 'minutes')
 
     let { selecting, startSlot, endSlot } = this.state
-      , style = this._slotStyle(startSlot, endSlot, 0)
+    let style = this._slotStyle(startSlot, endSlot)
 
     let selectDates = {
       start: this.state.startDate,
@@ -170,9 +201,7 @@ let DaySlot = React.createClass({
     let EventComponent = eventComponent
       , lastLeftOffset = 0;
 
-    events.sort((a, b) => +get(a, startAccessor) - +get(b, startAccessor))
-
-    return events.map((event, idx) => {
+    return this.getSortedEvents().map((event, idx) => {
       let start = get(event, startAccessor)
       let end = get(event, endAccessor)
       let startSlot = positionFromDate(start, min, this._totalMin);
@@ -181,17 +210,14 @@ let DaySlot = React.createClass({
       let continuesPrior = startsBefore(start, min)
       let continuesAfter = startsAfter(end, max)
 
-      lastLeftOffset = Math.max(0,
-        overlaps(event, events.slice(0, idx), this.props, lastLeftOffset + 1))
-
-      let style = this._slotStyle(startSlot, endSlot, lastLeftOffset)
+      let style = this._eventStyle(event, idx)
 
       let title = get(event, titleAccessor)
       let label = localizer.format({ start, end }, eventTimeRangeFormat, culture);
       let _isSelected = isSelected(event, selected);
 
       if (eventPropGetter)
-        var { style: xStyle, className } = eventPropGetter(event, start, end, _isSelected);
+        var { xStyle, className } = eventPropGetter(event, start, end, _isSelected);
 
       return (
         <EventWrapper event={event} key={'evt_' + idx}>
@@ -219,27 +245,54 @@ let DaySlot = React.createClass({
     })
   },
 
-  _slotStyle(startSlot, endSlot, leftOffset){
+  _eventStyle(event, idx) {
+    let { min, startAccessor, endAccessor } = this.props
 
+    let events = this.getSortedEvents()
+    let start = get(event, startAccessor)
+    let end = get(event, endAccessor)
+
+    let startSlot = positionFromDate(start, min, this._totalMin)
+    let endSlot = positionFromDate(end, min, this._totalMin)
     endSlot = Math.max(endSlot, startSlot + this.props.step) //must be at least one `step` high
 
-    let eventOffset = this.props.eventOffset || 10
-      , isRtl = this.props.rtl;
+    if (!_styleMap[idx]) {
+      let i = idx
+      let rowCount = 0
 
+      while (
+        i < events.length &&
+        endSlot > positionFromDate(get(events[i++], startAccessor), min, this._totalMin)
+      ) {
+        rowCount++
+      }
+
+      for (let n = 0; n < rowCount; n++) {
+        let widthPercentage = 100 / rowCount
+        _styleMap[idx + n] = {
+          left: `${(n) * widthPercentage}%`,
+          width: `${widthPercentage}%`
+        }
+      }
+    }
+
+    let { left = 0, width = '100%' } = _styleMap[idx] || {}
+    let { top, height } = this._slotStyle(startSlot, endSlot)
+
+    return { left, width, top, height }
+  },
+
+  _slotStyle(startSlot, endSlot) {
     let top = ((startSlot / this._totalMin) * 100);
     let bottom = ((endSlot / this._totalMin) * 100);
-    let per = leftOffset === 0 ? 0 : leftOffset * eventOffset;
-    let rightDiff = (eventOffset / (leftOffset + 1));
 
     return {
       top: top + '%',
-      height: bottom - top + '%',
-      [isRtl ? 'right' : 'left']: per + '%',
-      width: (leftOffset === 0 ? (100 - eventOffset) : (100 - per) - rightDiff) + '%'
+      height: bottom - top + '%'
     }
   },
 
-  _selectable(){
+  _selectable() {
     let node = findDOMNode(this);
     let selector = this._selector = new Selection(()=> findDOMNode(this))
 
@@ -347,7 +400,7 @@ let DaySlot = React.createClass({
 });
 
 
-function minToDate(min, date){
+function minToDate(min, date) {
   var dt = new Date(date)
     , totalMins = dates.diff(dates.startOf(date, 'day'), date, 'minutes');
 
