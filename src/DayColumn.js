@@ -194,7 +194,6 @@ let DaySlot = React.createClass({
       , startAccessor, endAccessor, titleAccessor } = this.props;
 
     let EventComponent = eventComponent
-      , lastLeftOffset = 0;
 
     return this.getSortedEvents().map((event, idx) => {
       let start = get(event, startAccessor);
@@ -219,7 +218,6 @@ let DaySlot = React.createClass({
             onClick={(e) => this._select(event, e)}
             className={cn('rbc-event', className, {
               'rbc-selected': _isSelected,
-              'rbc-event-overlaps': lastLeftOffset !== 0,
               'rbc-event-continues-earlier': continuesPrior,
               'rbc-event-continues-later': continuesAfter
             })}
