@@ -56,17 +56,25 @@ const sort = (function() {
 
   return function (events, startAccessor, endAccessor) {
     if (_sortedEvents !== events.length) {
+        console.log({events})
       _sortedEvents = events.sort((a, b) => {
         let startA = +get(a, startAccessor)
         let startB = +get(b, startAccessor)
 
         if (startA === startB) {
-          return +get(b, endAccessor) - +get(a, endAccessor)
+          const endB = +get(b, endAccessor)
+          const endA = +get(a, endAccessor)
+          if (endA === endB) {
+            return -1
+          }
+          return endB - endA
         }
 
         return startA - startB
       })
     }
+
+    console.log({_sortedEvents})
 
     return _sortedEvents
   }
@@ -242,67 +250,56 @@ let DaySlot = React.createClass({
     let styleMap = []
 
     return function (event, idx) {
-      let { min, startAccessor, endAccessor } = this.props
+      let { min, startAccessor, endAccessor, rtl: isRtl, step, timeslots } = this.props
 
-      let getSlot = (event, accessor) => positionFromDate(
+      let getSlot = (event, accessor) => event && positionFromDate(
         get(event, accessor), min, this._totalMin
       )
 
       let events = this.getSortedEvents()
-      let startSlot = getSlot(event, startAccessor)
-      let endSlot = Math.max(
-        getSlot(event, endAccessor), startSlot + this.props.step
-      ) // must be at least one `step` high
+      let start = getSlot(event, startAccessor)
+      let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
 
       if (!styleMap[idx]) {
-        let rowCount = 1
+        let siblings = 0
         let nextIdx = idx + 1
-        let nextEvent
-        let isContainer = true
+        let nextStart
 
-        while (nextEvent = events[nextIdx++]) {
-          let nextStartSlot = getSlot(nextEvent, startAccessor)
+        while (
+          (nextStart = getSlot(events[nextIdx++], startAccessor)) &&
+          (
+            Math.abs(start - nextStart) < (step / 2)
+          )
+        ) siblings++
 
-          // This event has no more events inside it
-          if (endSlot < nextStartSlot) {
-            break
-          }
-
-          let nextEndSlot = getSlot(nextEvent, endAccessor)
-
-          // This event is not fully containing all events inside it
-          if (nextStartSlot === startSlot || nextEndSlot > endSlot) {
-            isContainer = false
-          }
-
-          rowCount++
-        }
-
-        for (let n = 0; n < rowCount; n++) {
-          if (isContainer && n === 0) {
-            styleMap[idx] = {
-              left: 0,
-              width: '100%',
-              zIndex: 0
-            }
-          } else {
-            let adjustedRowCount = rowCount - (isContainer ? 1 : 0)
-            let adjustedLeftOffset = isContainer ? n - 1 : n
-            let width = 100 / adjustedRowCount
+        if (siblings) {
+          for (let n = 0; n <= siblings; n++) {
+            let width = 100 / (siblings + 1)
 
             styleMap[idx + n] = {
-              left: `${(adjustedLeftOffset) * width}%`,
+              xOffset: `${(n) * width}%`,
               width: `${width}%`,
-              zIndex: 1
+              margin: `0 ${2}px`
             }
           }
-
+        } else {
+          styleMap[idx] = {
+            paddingLeft: '2px',
+            xOffset: 0,
+            width: '100%'
+          }
         }
       }
 
+      let { xOffset, width, ...styles } = styleMap[idx]
+      let { top, height } = this._slotStyle(start, end)
+
       return {
-        ...styleMap[idx],
-        ...this._slotStyle(startSlot, endSlot)
+        ...styles,
+        top,
+        height,
+        [isRtl ? 'right' : 'left']: xOffset,
+        width
       }
     }
   })(),
