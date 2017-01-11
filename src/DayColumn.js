@@ -197,14 +197,14 @@ let DaySlot = React.createClass({
       , lastLeftOffset = 0;
 
     return this.getSortedEvents().map((event, idx) => {
-      let start = get(event, startAccessor)
-      let end = get(event, endAccessor)
+      let start = get(event, startAccessor);
+      let end = get(event, endAccessor);
 
-      let continuesPrior = startsBefore(start, min)
-      let continuesAfter = startsAfter(end, max)
+      let continuesPrior = startsBefore(start, min);
+      let continuesAfter = startsAfter(end, max);
 
-      let style = this._eventStyle(event, idx)
-      let title = get(event, titleAccessor)
+      let style = this._eventStyle(event, idx);
+      let title = get(event, titleAccessor);
       let label = localizer.format({ start, end }, eventTimeRangeFormat, culture);
       let _isSelected = isSelected(event, selected);
 
@@ -238,9 +238,11 @@ let DaySlot = React.createClass({
   },
 
   _eventStyle: (function() {
-    let styleMap = []
+    let styleMap
 
     return function (event, idx) {
+      if (idx === 0) styleMap = []
+
       let { min, startAccessor, endAccessor, rtl: isRtl, step, timeslots } = this.props
 
       let getSlot = (event, accessor) => event && positionFromDate(
