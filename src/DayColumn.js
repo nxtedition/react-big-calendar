@@ -55,26 +55,18 @@ const sort = (function() {
   let _sortedEvents = []
 
   return function (events, startAccessor, endAccessor) {
-    if (_sortedEvents !== events.length) {
-        console.log({events})
+    if (_sortedEvents.length !== events.length) {
       _sortedEvents = events.sort((a, b) => {
         let startA = +get(a, startAccessor)
         let startB = +get(b, startAccessor)
 
         if (startA === startB) {
-          const endB = +get(b, endAccessor)
-          const endA = +get(a, endAccessor)
-          if (endA === endB) {
-            return -1
-          }
-          return endB - endA
+          return +get(b, endAccessor) - +get(a, endAccessor)
         }
 
         return startA - startB
       })
     }
-
-    console.log({_sortedEvents})
 
     return _sortedEvents
   }
@@ -212,7 +204,6 @@ let DaySlot = React.createClass({
       let continuesAfter = startsAfter(end, max)
 
       let style = this._eventStyle(event, idx)
-
       let title = get(event, titleAccessor)
       let label = localizer.format({ start, end }, eventTimeRangeFormat, culture);
       let _isSelected = isSelected(event, selected);
