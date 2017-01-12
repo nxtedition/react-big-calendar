@@ -237,9 +237,13 @@ let DaySlot = React.createClass({
 
   _eventStyle: (function() {
     let styleMap
+    let parentsMap
 
     return function (event, idx) {
-      if (idx === 0) styleMap = []
+      if (idx === 0) {
+        styleMap = []
+        parentsMap = []
+      }
 
       let { min, startAccessor, endAccessor, rtl: isRtl, step, timeslots } = this.props
 
@@ -253,29 +257,34 @@ let DaySlot = React.createClass({
 
       if (!styleMap[idx]) {
         let siblings = 0
-        let nextIdx = idx + 1
+        let children = 0
+        let nextIdx = idx
         let nextStart
 
         while (
-          (nextStart = getSlot(events[nextIdx++], startAccessor)) &&
-          (
-            Math.abs(start - nextStart) < (step / 2)
-          )
-        ) siblings++
+          (nextStart = getSlot(events[++nextIdx], startAccessor)) &&
+          end > nextStart
+        ) {
+          if (Math.abs(start - nextStart) < (step)) {
+            siblings++
+          } else {
+            children++
+            parentsMap[nextIdx] = (parentsMap[nextIdx] || 0) + 1
+          }
+        }
 
         if (siblings) {
           for (let n = 0; n <= siblings; n++) {
             let width = 100 / (siblings + 1)
 
             styleMap[idx + n] = {
+              //transform: `translateX(-${width * n}%)`,
               xOffset: `${(n) * width}%`,
-              width: `${width}%`,
-              margin: `0 ${2}px`
+              width: `${width}%`
             }
           }
         } else {
           styleMap[idx] = {
-            paddingLeft: '2px',
             xOffset: 0,
             width: '100%'
           }
@@ -284,9 +293,11 @@ let DaySlot = React.createClass({
 
       let { xOffset, width, ...styles } = styleMap[idx]
       let { top, height } = this._slotStyle(start, end)
+      let nbrOfParents = parentsMap[idx] || 0
 
       return {
         ...styles,
+        // transform: `translateX(-${5 * nbrOfParents}px)`,
         top,
         height,
         [isRtl ? 'right' : 'left']: xOffset,
