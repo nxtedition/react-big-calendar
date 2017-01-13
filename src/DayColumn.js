@@ -304,6 +304,7 @@ let DaySlot = React.createClass({
           for (let i = 1; i < siblings + 1; i++) {
             familyTree[idx + i] = {
               siblingIdx: i,
+              childGroups: [],
               nbrOfSiblings: siblings
             }
           }
@@ -315,7 +316,10 @@ let DaySlot = React.createClass({
             console.log(`Found child: ${nextEvent.title}`, { nextIdx })
 
             let childGroup = [nextIdx]
-            familyTree[nextIdx] = { parentIdx: idx }
+            familyTree[nextIdx] = {
+              parentIdx: idx,
+              childGroups: []
+            }
 
             // Find siblings to this child
             let siblingIdx = nextIdx
@@ -326,22 +330,33 @@ let DaySlot = React.createClass({
               childGroup.push(siblingIdx)
             }
 
+            // Give children to sibling if possible
+            let parentIdx = idx
+
+            if (siblings) {
+              while (isChild(++parentIdx, nextIdx)) {
+
+              }
+              parentIdx--
+            }
+
+            if (parentIdx !== idx) {
+              console.log(`Move childGroup, starting at ${nextEvent.title}, to ${events[parentIdx].title}`, {parentIdx})
+            }
+
+            console.log({siblings, nextIdx, parentIdx, idx})
 
             for (let i = 0; i < childGroup.length; i++) {
               familyTree[nextIdx + i] = {
-                parentIdx: idx,
+                parentIdx,
                 siblingIdx: i,
                 nbrOfSiblings: childGroup.length
               }
             }
 
-            familyTree[idx].childGroups.push(childGroup)
+            familyTree[parentIdx].childGroups.push(childGroup)
 
             nextIdx = siblingIdx
-
-            // Give children to sibling if possible
-            // let parentIdx = idx
-            // while (isSibling(idx, ++parentIdx) && isChild(parentIdx, nextIdx))
 
           }
 
@@ -354,7 +369,6 @@ let DaySlot = React.createClass({
 
       if (idx === 0) {
         familyTree = getFamilyTree()
-        console.log({ familyTree })
       }
 
       let {
@@ -384,20 +398,13 @@ let DaySlot = React.createClass({
         xOffset
       }
 
-
       let xAdjustment = 0
 
       if (spaceOccupiedByParent) {
-        xAdjustment = spaceOccupiedByParent / 3
+        xAdjustment = spaceOccupiedByParent * 0.35
       } else if (nbrOfSiblings && siblingIdx > 0) {
-        xAdjustment = width / 3
+        xAdjustment = width * 0.35
       }
-
-      console.log({xAdjustment})
-
-      // if ((nbrOfSiblings && siblingIdx < nbrOfSiblings) || availableWidth > width) {
-      //   widthMultiplier = 1.3
-      // }
 
       let { top, height } = this._slotStyle(start, end)
 
