@@ -260,7 +260,7 @@ let DaySlot = React.createClass({
         let start1 = getSlot(event1, startAccessor)
         let start2 = getSlot(event2, startAccessor)
 
-        return (Math.abs(start1 - start2) < step)
+        return (Math.abs(start1 - start2) < 60)
       }
 
       let isChild = (parentIdx, childIdx) => {
