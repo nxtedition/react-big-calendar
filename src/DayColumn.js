@@ -344,8 +344,6 @@ let DaySlot = React.createClass({
               console.log(`Move childGroup, starting at ${nextEvent.title}, to ${events[parentIdx].title}`, {parentIdx})
             }
 
-            console.log({siblings, nextIdx, parentIdx, idx})
-
             for (let i = 0; i < childGroup.length; i++) {
               familyTree[nextIdx + i] = {
                 parentIdx,
@@ -371,6 +369,8 @@ let DaySlot = React.createClass({
         familyTree = getFamilyTree()
       }
 
+      console.log({familyTree})
+
       let {
         parentIdx,
         childGroups = [],
@@ -382,14 +382,20 @@ let DaySlot = React.createClass({
         return Math.max(items, group.length)
       }, 0)
 
-      let columns = Math.max(nbrOfSiblings + 1, biggestChildGroup)
+      let columns = Math.max(nbrOfSiblings + 1, biggestChildGroup + 1)
       let parent = familyTree[parentIdx]
 
       let spaceOccupiedByParent = parent ? parent.width + (parent.xOffset || 0) : 0
       let availableRowWidth = 100 - spaceOccupiedByParent
-      let availableWidth = availableRowWidth / columns
-      let width = Math.min(availableWidth, (parent ? parent.width : 100))
+      let availableWidth = parent
+        ? (availableRowWidth) / Math.max(1, columns - 1)
+        : 100 / columns
+      let width = availableWidth
+
+
       let xOffset = spaceOccupiedByParent + (width * siblingIdx)
+
+      console.log({columns, availableRowWidth, availableWidth, parent})
 
       // Update stylemap with new styles
       familyTree[idx] = {
@@ -401,9 +407,9 @@ let DaySlot = React.createClass({
       let xAdjustment = 0
 
       if (spaceOccupiedByParent) {
-        xAdjustment = spaceOccupiedByParent * 0.35
-      } else if (nbrOfSiblings && siblingIdx > 0) {
-        xAdjustment = width * 0.35
+        xAdjustment = spaceOccupiedByParent * 0.3
+      } else if (columns > 1) {
+        xAdjustment = width * 0.3
       }
 
       let { top, height } = this._slotStyle(start, end)
@@ -411,7 +417,7 @@ let DaySlot = React.createClass({
       return {
         top,
         height,
-        [isRtl ? 'right' : 'left']: `${xOffset - xAdjustment}%`,
+        [isRtl ? 'right' : 'left']: `${Math.max(0, xOffset - xAdjustment)}%`,
         width: `${width + xAdjustment}%`
       }
     }
