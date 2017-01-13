@@ -56,7 +56,7 @@ const sort = (function() {
 
   return function (events, startAccessor, endAccessor) {
     if (_sortedEvents.length !== events.length) {
-      _sortedEvents = events.sort((a, b) => {
+      _sortedEvents = events.sort((a, b, idx) => {
         let startA = +get(a, startAccessor)
         let startB = +get(b, startAccessor)
 
@@ -255,53 +255,108 @@ let DaySlot = React.createClass({
       let start = getSlot(event, startAccessor)
       let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
 
+      let columns = 1
+
       if (!styleMap[idx]) {
         let siblings = 0
-        let children = 0
         let nextIdx = idx
         let nextStart
 
+        console.log(`Start search for ${event.title}`)
         while (
           (nextStart = getSlot(events[++nextIdx], startAccessor)) &&
-          end > nextStart
+          nextStart < end
         ) {
           if (Math.abs(start - nextStart) < (step)) {
+            console.log(`${event.title} found sibling: ${events[nextIdx].title}`)
             siblings++
           } else {
-            children++
-            parentsMap[nextIdx] = (parentsMap[nextIdx] || 0) + 1
+            console.log(`${event.title} found child: ${events[nextIdx].title}`)
+
+            // Found child, see if any one else is also a parent
+            let parentIdx = idx
+
+            while (
+              parentIdx < nextIdx - 1 &&
+              console.log('diff', Math.abs(nextStart - getSlot(events[parentIdx + 1], endAccessor)))||
+              (Math.abs(nextStart - getSlot(events[parentIdx + 1], endAccessor)) < step) &&
+              nextStart > getSlot(events[parentIdx + 1], startAccessor)
+            ) {
+              parentIdx++
+              console.log(`${events[parentIdx].title} is also parent to: ${events[nextIdx].title}`, {parentIdx, nextIdx})
+            }
+
+            console.log(`${events[nextIdx].title}´s parent is: ${events[parentIdx].title}`)
+            columns = Math.max(columns, nextIdx - idx)
+            parentsMap[nextIdx] = parentIdx
           }
         }
 
-        if (siblings) {
-          for (let n = 0; n <= siblings; n++) {
-            let width = 100 / (siblings + 1)
-
-            styleMap[idx + n] = {
-              //transform: `translateX(-${width * n}%)`,
-              xOffset: `${(n) * width}%`,
-              width: `${width}%`
-            }
-          }
-        } else {
-          styleMap[idx] = {
-            xOffset: 0,
-            width: '100%'
+        console.log(`End search for ${event.title}`, { parentsMap, columns, siblings})
+        for (let n = 0; n <= siblings; n++) {
+          styleMap[idx + n] = {
+            siblings,
+            siblingIdx: n,
           }
         }
       }
 
-      let { xOffset, width, ...styles } = styleMap[idx]
+      // console.log({title: event.title, parentTitle: (events[parentIdx] || {}).title, })
+
       let { top, height } = this._slotStyle(start, end)
-      let nbrOfParents = parentsMap[idx] || 0
+      let {
+        xOffset = 0,
+        width = 100,
+        siblingIdx = 0,
+        siblings = 0
+      } = styleMap[idx]
+
+      let parentIdx = parentsMap[idx]
+      let parentStyles = styleMap[parentIdx] || {}
+      let parentWidth = parentStyles.width || 0
+      let parentXOffset = parentStyles.xOffset || 0
+      let availableRowWidth = parentWidth
+        ? 100 - (parentWidth)
+        : 100
+      let availableWidth = siblings
+        ? availableRowWidth / (siblings + 1)
+        : availableRowWidth / columns
+
+      width = Math.min(parentWidth || 100, availableWidth)
+      xOffset = parentXOffset + (parentWidth / 2) + (width * siblingIdx)
+
+      console.log({
+        title: event.title,
+        siblings,
+        parentTitle: events[parentIdx] && events[parentIdx].title,
+        parentWidth,
+        styles: styleMap[idx],
+        availableRowWidth,
+        width,
+        columns,
+        xOffset
+      })
+
+
+      // Update stylemap with new styles
+      styleMap[idx] = {
+        xOffset,
+        width,
+        siblings,
+        siblingIdx
+      }
+
+      let widthMultiplier = 1
+
+      if ((siblings && siblingIdx < siblings) || availableWidth > width) {
+        widthMultiplier = 1.3
+      }
 
       return {
-        ...styles,
-        // transform: `translateX(-${5 * nbrOfParents}px)`,
         top,
         height,
-        [isRtl ? 'right' : 'left']: xOffset,
-        width
+        [isRtl ? 'right' : 'left']: `${xOffset}%`,
+        width: `${width * widthMultiplier}%`
       }
     }
   })(),
