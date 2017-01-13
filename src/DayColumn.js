@@ -238,13 +238,9 @@ let DaySlot = React.createClass({
   _eventStyle: (function() {
     let styleMap
     let parentsMap
+    let familyTree = {}
 
     return function (event, idx) {
-      if (idx === 0) {
-        styleMap = []
-        parentsMap = []
-      }
-
       let { min, startAccessor, endAccessor, rtl: isRtl, step, timeslots } = this.props
 
       let getSlot = (event, accessor) => event && positionFromDate(
@@ -255,108 +251,161 @@ let DaySlot = React.createClass({
       let start = getSlot(event, startAccessor)
       let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
 
-      let columns = 1
+      let isSibling = (idx1, idx2) => {
+        let event1 = events[idx1]
+        let event2 = events[idx2]
 
-      if (!styleMap[idx]) {
-        let siblings = 0
-        let nextIdx = idx
+        if (!event1 || !event2) return false
+
+        let start1 = getSlot(event1, startAccessor)
+        let start2 = getSlot(event2, startAccessor)
+
+        return (Math.abs(start1 - start2) < step)
+      }
+
+      let isChild = (parentIdx, childIdx) => {
+        if (isSibling(parentIdx, childIdx)) return false
+
+        let parentEnd = getSlot(events[parentIdx], endAccessor)
+        let childStart = getSlot(events[childIdx], startAccessor)
+
+        return parentEnd > childStart
+      }
+
+      let getFamilyTree = () => {
+        familyTree = {}
+        let idx = 0
         let nextStart
 
-        console.log(`Start search for ${event.title}`)
-        while (
-          (nextStart = getSlot(events[++nextIdx], startAccessor)) &&
-          nextStart < end
-        ) {
-          if (Math.abs(start - nextStart) < (step)) {
-            console.log(`${event.title} found sibling: ${events[nextIdx].title}`)
+        while (idx < events.length) {
+          let event = events[idx]
+          console.log(`Start search for: ${event.title}`, { idx })
+
+          if (familyTree[idx]) {
+            idx++
+            continue
+          }
+
+          familyTree[idx] = {
+            parentIdx: null,
+            nbrOfSiblings: 0,
+            childGroups: []
+          }
+
+          let nextIdx = idx
+          let siblings = 0
+
+          while (isSibling(idx, ++nextIdx)) {
+            let nextEvent = events[nextIdx]
+            console.log(`Found sibling: ${nextEvent.title}`,{ nextIdx })
             siblings++
-          } else {
-            console.log(`${event.title} found child: ${events[nextIdx].title}`)
+          }
 
-            // Found child, see if any one else is also a parent
-            let parentIdx = idx
+          for (let i = 1; i < siblings + 1; i++) {
+            familyTree[idx + i] = {
+              siblingIdx: i,
+              nbrOfSiblings: siblings
+            }
+          }
 
-            while (
-              parentIdx < nextIdx - 1 &&
-              console.log('diff', Math.abs(nextStart - getSlot(events[parentIdx + 1], endAccessor)))||
-              (Math.abs(nextStart - getSlot(events[parentIdx + 1], endAccessor)) < step) &&
-              nextStart > getSlot(events[parentIdx + 1], startAccessor)
-            ) {
-              parentIdx++
-              console.log(`${events[parentIdx].title} is also parent to: ${events[nextIdx].title}`, {parentIdx, nextIdx})
+          familyTree[idx].nbrOfSiblings = siblings
+
+          while (isChild(idx, nextIdx)) {
+            let nextEvent = events[nextIdx]
+            console.log(`Found child: ${nextEvent.title}`, { nextIdx })
+
+            let childGroup = [nextIdx]
+            familyTree[nextIdx] = { parentIdx: idx }
+
+            // Find siblings to this child
+            let siblingIdx = nextIdx
+
+            while (isSibling(nextIdx, ++siblingIdx)) {
+              let sibling = events[siblingIdx]
+              console.log(`-> Found sibling: ${sibling.title}`)
+              childGroup.push(siblingIdx)
             }
 
-            console.log(`${events[nextIdx].title}´s parent is: ${events[parentIdx].title}`)
-            columns = Math.max(columns, nextIdx - idx)
-            parentsMap[nextIdx] = parentIdx
+
+            for (let i = 0; i < childGroup.length; i++) {
+              familyTree[nextIdx + i] = {
+                parentIdx: idx,
+                siblingIdx: i,
+                nbrOfSiblings: childGroup.length
+              }
+            }
+
+            familyTree[idx].childGroups.push(childGroup)
+
+            nextIdx = siblingIdx
+
+            // Give children to sibling if possible
+            // let parentIdx = idx
+            // while (isSibling(idx, ++parentIdx) && isChild(parentIdx, nextIdx))
+
           }
+
+          console.log(`End search for: ${event.title}`, { nextIdx })
+          idx = nextIdx
         }
 
-        console.log(`End search for ${event.title}`, { parentsMap, columns, siblings})
-        for (let n = 0; n <= siblings; n++) {
-          styleMap[idx + n] = {
-            siblings,
-            siblingIdx: n,
-          }
-        }
+        return familyTree
       }
 
-      // console.log({title: event.title, parentTitle: (events[parentIdx] || {}).title, })
+      if (idx === 0) {
+        familyTree = getFamilyTree()
+        console.log({ familyTree })
+      }
 
-      let { top, height } = this._slotStyle(start, end)
       let {
-        xOffset = 0,
-        width = 100,
-        siblingIdx = 0,
-        siblings = 0
-      } = styleMap[idx]
+        parentIdx,
+        childGroups = [],
+        nbrOfSiblings = 0,
+        siblingIdx = 0
+      } = familyTree[idx] || {}
 
-      let parentIdx = parentsMap[idx]
-      let parentStyles = styleMap[parentIdx] || {}
-      let parentWidth = parentStyles.width || 0
-      let parentXOffset = parentStyles.xOffset || 0
-      let availableRowWidth = parentWidth
-        ? 100 - (parentWidth)
-        : 100
-      let availableWidth = siblings
-        ? availableRowWidth / (siblings + 1)
-        : availableRowWidth / columns
+      let biggestChildGroup = childGroups.reduce((items, group) => {
+        return Math.max(items, group.length)
+      }, 0)
 
-      width = Math.min(parentWidth || 100, availableWidth)
-      xOffset = parentXOffset + (parentWidth / 2) + (width * siblingIdx)
+      let columns = Math.max(nbrOfSiblings + 1, biggestChildGroup)
+      let parent = familyTree[parentIdx]
 
-      console.log({
-        title: event.title,
-        siblings,
-        parentTitle: events[parentIdx] && events[parentIdx].title,
-        parentWidth,
-        styles: styleMap[idx],
-        availableRowWidth,
-        width,
-        columns,
-        xOffset
-      })
-
+      let spaceOccupiedByParent = parent ? parent.width + (parent.xOffset || 0) : 0
+      let availableRowWidth = 100 - spaceOccupiedByParent
+      let availableWidth = availableRowWidth / columns
+      let width = Math.min(availableWidth, (parent ? parent.width : 100))
+      let xOffset = spaceOccupiedByParent + (width * siblingIdx)
 
       // Update stylemap with new styles
-      styleMap[idx] = {
-        xOffset,
+      familyTree[idx] = {
+        ...familyTree[idx],
         width,
-        siblings,
-        siblingIdx
+        xOffset
       }
 
-      let widthMultiplier = 1
 
-      if ((siblings && siblingIdx < siblings) || availableWidth > width) {
-        widthMultiplier = 1.3
+      let xAdjustment = 0
+
+      if (spaceOccupiedByParent) {
+        xAdjustment = spaceOccupiedByParent / 3
+      } else if (nbrOfSiblings && siblingIdx > 0) {
+        xAdjustment = width / 3
       }
+
+      console.log({xAdjustment})
+
+      // if ((nbrOfSiblings && siblingIdx < nbrOfSiblings) || availableWidth > width) {
+      //   widthMultiplier = 1.3
+      // }
+
+      let { top, height } = this._slotStyle(start, end)
 
       return {
         top,
         height,
-        [isRtl ? 'right' : 'left']: `${xOffset}%`,
-        width: `${width * widthMultiplier}%`
+        [isRtl ? 'right' : 'left']: `${xOffset - xAdjustment}%`,
+        width: `${width + xAdjustment}%`
       }
     }
   })(),
