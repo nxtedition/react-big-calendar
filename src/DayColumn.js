@@ -293,7 +293,7 @@ let DaySlot = React.createClass({
       // Set styles to top level events
       Array.of(idx).concat(siblings).forEach((eventIdx, siblingIdx) => {
         let width = 100 / nbrOfColumns
-        let xAdjustment = width * OVERLAP_MULTIPLIER
+        let xAdjustment = width * (nbrOfColumns > 1 ? OVERLAP_MULTIPLIER : 0)
         let { top, height } = getYStyles(eventIdx)
 
         events[eventIdx].styles = {
