@@ -207,10 +207,10 @@ let DaySlot = React.createClass({
   },
 
   _eventStyle: (function() {
-    let familyTree = {}
+    let styleMap = {}
 
     return function (events, idx) {
-      let { min, startAccessor, endAccessor } = this.props
+      let { min, startAccessor, endAccessor, step, rtl: isRtl } = this.props
 
       let getSlot = (event, accessor) => event && positionFromDate(
         get(event, accessor), min, this._totalMin
@@ -248,6 +248,7 @@ let DaySlot = React.createClass({
 
       let getChildGroups = (idx, nextIdx) => {
         let groups = []
+        let nbrOfColumns = 0
 
         while (isChild(idx, nextIdx)) {
           let childGroup = [nextIdx]
@@ -255,26 +256,35 @@ let DaySlot = React.createClass({
 
           while (isSibling(nextIdx, ++siblingIdx)) childGroup.push(siblingIdx)
 
+          nbrOfColumns = Math.max(nbrOfColumns, childGroup.length)
           groups.push(childGroup)
           nextIdx = siblingIdx
         }
 
-        return groups
+        return { childGroups: groups, nbrOfChildColumns: nbrOfColumns }
       }
 
-      let createFamilyTree = () => {
+      let createStyleMap = () => {
+        let OVERLAP_MULTIPLIER = 0.3
+        let styleMap = {}
         let idx = 0
 
+        // Each iteration goes over all related/overlapping events
         while (idx < events.length) {
           let siblings = getSiblings(idx)
-          let childGroups = getChildGroups(idx, idx + siblings.length + 1)
+          let { childGroups, nbrOfChildColumns } = getChildGroups(
+            idx, idx + siblings.length + 1
+          )
+          let nbrOfColumns = Math.max(nbrOfChildColumns, siblings.length) + 1
 
+          // Set styles to top level events
           Array.of(idx).concat(siblings).forEach((eventIdx, siblingIdx) => {
-            familyTree[eventIdx] = {
-              parentIdx: null,
-              siblingIdx: siblingIdx,
-              childGroups: [],
-              nbrOfSiblings: siblings.length
+            let width = 100 / nbrOfColumns
+            let xAdjustment = width * OVERLAP_MULTIPLIER
+
+            styleMap[eventIdx] = {
+              width: width + xAdjustment,
+              xOffset: (width * siblingIdx) - xAdjustment
             }
           })
 
@@ -282,86 +292,52 @@ let DaySlot = React.createClass({
             let parentIdx = idx
             let siblingIdx = 0
 
-            // Move child groups to sibling if possible
+            // Move child group to sibling if possible, since this will makes
+            // room for more events
             while (isChild(siblings[siblingIdx], group[0])) {
               parentIdx = siblings[siblingIdx]
               siblingIdx++
             }
 
-            group.forEach((eventIdx, siblingIdx) => {
-              familyTree[eventIdx] = {
-                parentIdx,
-                siblingIdx,
-                nbrOfSiblings: group.length
+            // Set styles to child events
+            group.forEach((eventIdx, i) => {
+              let parent = styleMap[parentIdx]
+              let spaceOccupiedByParent = parent.width + parent.xOffset
+              let columns = Math.min(group.length, nbrOfColumns)
+              let width = (100 - spaceOccupiedByParent) / columns
+              let xAdjustment = spaceOccupiedByParent * OVERLAP_MULTIPLIER
+
+              styleMap[eventIdx] = {
+                width: width + xAdjustment,
+                xOffset: spaceOccupiedByParent + (width * i) - xAdjustment
               }
             })
-
-            familyTree[parentIdx].childGroups.push(group)
           })
 
-          // Move past all events we've gone through
+          // Move past all events we just went through
           idx += 1 + siblings.length + childGroups.reduce(
             (total, group) => total + group.length, 0
           )
         }
 
-        return familyTree
+        return styleMap
       }
 
       if (idx === 0) {
-        familyTree = {}
-        familyTree = createFamilyTree()
+        styleMap = createStyleMap()
       }
 
-      let {
-        parentIdx,
-        childGroups = [],
-        nbrOfSiblings = 0,
-        siblingIdx = 0
-      } = familyTree[idx] || {}
-
-      let biggestChildGroup = childGroups.reduce((items, group) => {
-        return Math.max(items, group.length)
-      }, 0)
-
-      let columns = Math.max(nbrOfSiblings + 1, biggestChildGroup + 1)
-      let parent = familyTree[parentIdx]
-
-      let spaceOccupiedByParent = parent ? parent.width + (parent.xOffset || 0) : 0
-      let availableRowWidth = 100 - spaceOccupiedByParent
-      let availableWidth = parent
-        ? (availableRowWidth) / Math.max(1, columns - 1)
-        : 100 / columns
-      let width = availableWidth
-
-
-      let xOffset = spaceOccupiedByParent + (width * siblingIdx)
-
-      // Update stylemap with new styles
-      familyTree[idx] = {
-        ...familyTree[idx],
-        width,
-        xOffset
-      }
-
-      let xAdjustment = 0
-
-      if (spaceOccupiedByParent) {
-        xAdjustment = spaceOccupiedByParent * 0.3
-      } else if (columns > 1) {
-        xAdjustment = width * 0.3
-      }
-
+      let { width, xOffset } = styleMap[idx]
       let event = events[idx]
       let start = getSlot(event, startAccessor)
-      let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
+      let end = Math.max(getSlot(event, endAccessor), start + step)
       let { top, height } = this._slotStyle(start, end)
 
       return {
         top,
         height,
-        [this.props.rtl ? 'right' : 'left']: `${Math.max(0, xOffset - xAdjustment)}%`,
-        width: `${width + xAdjustment}%`
+        [isRtl ? 'right' : 'left']: `${Math.max(0, xOffset)}%`,
+        width: `${width}%`
       }
     }
   })(),
