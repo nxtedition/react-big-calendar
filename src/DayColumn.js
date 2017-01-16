@@ -34,43 +34,18 @@ function positionFromDate(date, min, total) {
   return Math.min(diff, total)
 }
 
-function overlaps(event, events, { startAccessor, endAccessor }, last) {
-  let eStart = get(event, startAccessor);
-  let offset = last;
+function sortEvents (events, startAccessor, endAccessor) {
+  return events.sort((a, b, idx) => {
+    let startA = +get(a, startAccessor)
+    let startB = +get(b, startAccessor)
 
-  function overlap(eventB){
-    return dates.lt(eStart, get(eventB, endAccessor))
-  }
-
-  if (!events.length) return last - 1
-  events.reverse().some(prevEvent => {
-    if (overlap(prevEvent)) return true
-    offset = offset - 1
-  })
-
-  return offset
-}
-
-const sort = (function() {
-  let _sortedEvents = []
-
-  return function (events, startAccessor, endAccessor) {
-    if (_sortedEvents.length !== events.length) {
-      _sortedEvents = events.sort((a, b, idx) => {
-        let startA = +get(a, startAccessor)
-        let startB = +get(b, startAccessor)
-
-        if (startA === startB) {
-          return +get(b, endAccessor) - +get(a, endAccessor)
-        }
-
-        return startA - startB
-      })
+    if (startA === startB) {
+      return +get(b, endAccessor) - +get(a, endAccessor)
     }
 
-    return _sortedEvents
-  }
-})()
+    return startA - startB
+  })
+}
 
 let DaySlot = React.createClass({
 
@@ -131,11 +106,6 @@ let DaySlot = React.createClass({
       this._teardownSelectable();
   },
 
-  getSortedEvents() {
-    let { events, startAccessor, endAccessor } = this.props
-    return sort(events, startAccessor, endAccessor)
-  },
-
   render() {
     const {
       min,
@@ -194,15 +164,16 @@ let DaySlot = React.createClass({
       , startAccessor, endAccessor, titleAccessor } = this.props;
 
     let EventComponent = eventComponent
+    let sortedEvents = sortEvents(events, startAccessor, endAccessor);
 
-    return this.getSortedEvents().map((event, idx) => {
+    return sortedEvents.map((event, idx) => {
       let start = get(event, startAccessor);
       let end = get(event, endAccessor);
 
       let continuesPrior = startsBefore(start, min);
       let continuesAfter = startsAfter(end, max);
 
-      let style = this._eventStyle(event, idx);
+      let style = this._eventStyle(sortedEvents, idx);
       let title = get(event, titleAccessor);
       let label = localizer.format({ start, end }, eventTimeRangeFormat, culture);
       let _isSelected = isSelected(event, selected);
@@ -236,20 +207,14 @@ let DaySlot = React.createClass({
   },
 
   _eventStyle: (function() {
-    let styleMap
-    let parentsMap
     let familyTree = {}
 
-    return function (event, idx) {
-      let { min, startAccessor, endAccessor, rtl: isRtl, step, timeslots } = this.props
+    return function (events, idx) {
+      let { min, startAccessor, endAccessor } = this.props
 
       let getSlot = (event, accessor) => event && positionFromDate(
         get(event, accessor), min, this._totalMin
       )
-
-      let events = this.getSortedEvents()
-      let start = getSlot(event, startAccessor)
-      let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
 
       let isSibling = (idx1, idx2) => {
         let event1 = events[idx1]
@@ -272,104 +237,81 @@ let DaySlot = React.createClass({
         return parentEnd > childStart
       }
 
-      let getFamilyTree = () => {
-        familyTree = {}
+      let getSiblings = (idx) => {
+        let nextIdx = idx
+        let siblings = []
+
+        while (isSibling(idx, ++nextIdx)) siblings.push(nextIdx)
+
+        return siblings
+      }
+
+      let getChildGroups = (idx, nextIdx) => {
+        let groups = []
+
+        while (isChild(idx, nextIdx)) {
+          let childGroup = [nextIdx]
+          let siblingIdx = nextIdx
+
+          while (isSibling(nextIdx, ++siblingIdx)) childGroup.push(siblingIdx)
+
+          groups.push(childGroup)
+          nextIdx = siblingIdx
+        }
+
+        return groups
+      }
+
+      let createFamilyTree = () => {
         let idx = 0
-        let nextStart
 
         while (idx < events.length) {
-          let event = events[idx]
-          console.log(`Start search for: ${event.title}`, { idx })
+          let siblings = getSiblings(idx)
+          let childGroups = getChildGroups(idx, idx + siblings.length + 1)
 
-          if (familyTree[idx]) {
-            idx++
-            continue
-          }
-
-          familyTree[idx] = {
-            parentIdx: null,
-            nbrOfSiblings: 0,
-            childGroups: []
-          }
-
-          let nextIdx = idx
-          let siblings = 0
-
-          while (isSibling(idx, ++nextIdx)) {
-            let nextEvent = events[nextIdx]
-            console.log(`Found sibling: ${nextEvent.title}`,{ nextIdx })
-            siblings++
-          }
-
-          for (let i = 1; i < siblings + 1; i++) {
-            familyTree[idx + i] = {
-              siblingIdx: i,
+          Array.of(idx).concat(siblings).forEach((eventIdx, siblingIdx) => {
+            familyTree[eventIdx] = {
+              parentIdx: null,
+              siblingIdx: siblingIdx,
               childGroups: [],
-              nbrOfSiblings: siblings
+              nbrOfSiblings: siblings.length
             }
-          }
+          })
 
-          familyTree[idx].nbrOfSiblings = siblings
-
-          while (isChild(idx, nextIdx)) {
-            let nextEvent = events[nextIdx]
-            console.log(`Found child: ${nextEvent.title}`, { nextIdx })
-
-            let childGroup = [nextIdx]
-            familyTree[nextIdx] = {
-              parentIdx: idx,
-              childGroups: []
-            }
-
-            // Find siblings to this child
-            let siblingIdx = nextIdx
-
-            while (isSibling(nextIdx, ++siblingIdx)) {
-              let sibling = events[siblingIdx]
-              console.log(`-> Found sibling: ${sibling.title}`)
-              childGroup.push(siblingIdx)
-            }
-
-            // Give children to sibling if possible
+          childGroups.forEach(group => {
             let parentIdx = idx
+            let siblingIdx = 0
 
-            if (siblings) {
-              while (isChild(++parentIdx, nextIdx)) {
-
-              }
-              parentIdx--
+            // Move child groups to sibling if possible
+            while (isChild(siblings[siblingIdx], group[0])) {
+              parentIdx = siblings[siblingIdx]
+              siblingIdx++
             }
 
-            if (parentIdx !== idx) {
-              console.log(`Move childGroup, starting at ${nextEvent.title}, to ${events[parentIdx].title}`, {parentIdx})
-            }
-
-            for (let i = 0; i < childGroup.length; i++) {
-              familyTree[nextIdx + i] = {
+            group.forEach((eventIdx, siblingIdx) => {
+              familyTree[eventIdx] = {
                 parentIdx,
-                siblingIdx: i,
-                nbrOfSiblings: childGroup.length
+                siblingIdx,
+                nbrOfSiblings: group.length
               }
-            }
+            })
 
-            familyTree[parentIdx].childGroups.push(childGroup)
+            familyTree[parentIdx].childGroups.push(group)
+          })
 
-            nextIdx = siblingIdx
-
-          }
-
-          console.log(`End search for: ${event.title}`, { nextIdx })
-          idx = nextIdx
+          // Move past all events we've gone through
+          idx += 1 + siblings.length + childGroups.reduce(
+            (total, group) => total + group.length, 0
+          )
         }
 
         return familyTree
       }
 
       if (idx === 0) {
-        familyTree = getFamilyTree()
+        familyTree = {}
+        familyTree = createFamilyTree()
       }
-
-      console.log({familyTree})
 
       let {
         parentIdx,
@@ -395,8 +337,6 @@ let DaySlot = React.createClass({
 
       let xOffset = spaceOccupiedByParent + (width * siblingIdx)
 
-      console.log({columns, availableRowWidth, availableWidth, parent})
-
       // Update stylemap with new styles
       familyTree[idx] = {
         ...familyTree[idx],
@@ -412,12 +352,15 @@ let DaySlot = React.createClass({
         xAdjustment = width * 0.3
       }
 
+      let event = events[idx]
+      let start = getSlot(event, startAccessor)
+      let end = Math.max(getSlot(event, endAccessor), start + this.props.step)
       let { top, height } = this._slotStyle(start, end)
 
       return {
         top,
         height,
-        [isRtl ? 'right' : 'left']: `${Math.max(0, xOffset - xAdjustment)}%`,
+        [this.props.rtl ? 'right' : 'left']: `${Math.max(0, xOffset - xAdjustment)}%`,
         width: `${width + xAdjustment}%`
       }
     }
