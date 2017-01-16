@@ -8,10 +8,8 @@ import {
   , dateRangeFormat
   , views as componentViews } from './utils/propTypes';
 
-import localizer from './localizer'
 import { notify } from './utils/helpers';
 import { navigate, views } from './utils/constants';
-import dates from './utils/dates';
 import defaultFormats from './formats';
 import viewLabel from './utils/viewLabel';
 import moveDate from './utils/move';
@@ -518,15 +516,7 @@ let Calendar = React.createClass({
     onNavigate(date, view)
 
     if (action === navigate.DATE)
-      this._viewNavigate(date)
-  },
-
-  _viewNavigate(nextDate) {
-    let { view, date, culture } = this.props;
-
-    if (dates.eq(date, nextDate, view, localizer.startOfWeek(culture))) {
       this.handleViewChange(views.DAY)
-    }
   },
 
   handleViewChange(view){
