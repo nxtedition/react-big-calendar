@@ -150,10 +150,9 @@ let DaySlot = React.createClass({
       , rtl: isRtl
       , startAccessor, endAccessor, titleAccessor } = this.props;
 
-    let EventComponent = eventComponent
-    let styledEvents = this._getStyledEvents()
+    let EventComponent = eventComponent;
 
-    return styledEvents.map((event, idx) => {
+    return this._getStyledEvents().map((event, idx) => {
       let start = get(event, startAccessor);
       let end = get(event, endAccessor);
 
